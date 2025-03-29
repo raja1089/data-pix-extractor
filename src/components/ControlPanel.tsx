@@ -3,7 +3,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileDown, Refresh, Settings, HelpCircle } from 'lucide-react';
+import { FileDown, RefreshCw, Settings, HelpCircle } from 'lucide-react';
 import { ExtractedData } from './DataTable';
 
 interface ControlPanelProps {
@@ -44,7 +44,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               onClick={onReset}
               className="flex items-center gap-2"
             >
-              <Refresh className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
               Reset
             </Button>
           </div>
