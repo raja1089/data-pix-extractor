@@ -1,69 +1,114 @@
-# Welcome to your Lovable project
 
-## Project info
+# Data Pix Extractor
 
-**URL**: https://lovable.dev/projects/a1900cdd-035f-485b-8ddb-a66a05e0a0df
+A React application for extracting structured data from images using OCR technology.
 
-## How can I edit this code?
+## Project Overview
 
-There are several ways of editing your application.
+Data Pix Extractor helps users extract structured data from images containing tables or structured text. The application uses OCR (Optical Character Recognition) to scan images and identify data that matches the specified field headers.
 
-**Use Lovable**
+### Features
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/a1900cdd-035f-485b-8ddb-a66a05e0a0df) and start prompting.
+- Image upload via drag-and-drop or file browser
+- OCR processing to extract text from images
+- Data parsing to identify and categorize information
+- Display of extracted data in a structured table
+- Export to Excel/CSV functionality
 
-Changes made via Lovable will be committed automatically to this repo.
+## Field Headers
 
-**Use your preferred IDE**
+The application can extract and identify the following fields:
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+IMAGE NAME
+EMAIL ADDRESS
+STATE_1
+COUNTRY_1
+HEIGHT
+BILLER NAME
+STATE_2
+FIN_NO2
+PAST SURG
+POLICY NO
+NAME_P_HOLDER
+DOB
+MEDICINE
+PILL RATE
+TOTAL AMT
+RECORD NO
+RES_ADDRESS
+ZIP_1
+SEX_1
+WEIGHT
+SHIPPER NAME
+ZIP_2
+ALCOHOLIC
+DIABETIC
+D.LIFE ASSURE
+SEX_2
+DOSAGE
+COST
+REMARK
+CUSTOMER NAME
+CITY_1
+FIN_NO1
+D_BIRTH
+BLOOD GP
+CITY_2
+COUNTRY_2
+SMOKER
+ALLERGIES
+P_INST
+STH CODE
+CARD NAME
+TABLETS
+SHIPPING COST
 ```
 
-**Edit a file directly in GitHub**
+## Getting Started
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Prerequisites
 
-**Use GitHub Codespaces**
+- Node.js
+- npm or yarn
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Installation
 
-## What technologies are used for this project?
+1. Clone the repository
+2. Install dependencies
+   ```bash
+   npm install
+   ```
+3. Start the development server
+   ```bash
+   npm run dev
+   ```
 
-This project is built with .
+## Usage
 
-- Vite
-- TypeScript
+1. Navigate to the application in your browser
+2. Upload an image containing structured data
+3. Wait for the OCR processing to complete
+4. Review the extracted data in the table
+5. Export to Excel if needed
+
+## Project Structure
+
+- `/src/components`: UI components
+- `/src/utils`: Utility functions including the data extraction logic
+- `/src/pages`: Page components
+
+## Technologies Used
+
 - React
-- shadcn-ui
+- TypeScript
 - Tailwind CSS
+- shadcn/ui components
+- OCR processing (mock implementation)
 
-## How can I deploy this project?
+## Next Steps
 
-Simply open [Lovable](https://lovable.dev/projects/a1900cdd-035f-485b-8ddb-a66a05e0a0df) and click on Share -> Publish.
-
-## I want to use a custom domain - is that possible?
-
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+- Implement real OCR processing using a service like Tesseract.js or Google Cloud Vision API
+- Add more export formats
+- Improve data extraction accuracy with machine learning
+- Add custom field mapping
