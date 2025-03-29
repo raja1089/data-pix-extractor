@@ -1,16 +1,5 @@
 
-// This is a mock implementation of data extraction
-// In a real application, this would use a proper OCR service
-
-export interface ExtractedField {
-  key: string;
-  value: string | null;
-}
-
-export interface ExtractedRecord {
-  id: number;
-  fields: Record<string, string | null>;
-}
+import Tesseract from 'tesseract.js';
 
 // Define all possible field headers that can be extracted
 export const FIELD_HEADERS = [
@@ -59,89 +48,122 @@ export const FIELD_HEADERS = [
   'SHIPPING COST'
 ];
 
-// Mock data based on the provided image
-const MOCK_DATA: ExtractedRecord[] = [
-  {
-    id: 1,
-    fields: {
-      'IMAGE NAME': 'A M Bibbs',
-      'EMAIL ADDRESS': 'ambibbs@aol.com',
-      'RES_ADDRESS': '2691 S Couns Dr',
-      'CITY_1': 'Sacramento',
-      'STATE_1': 'CA',
-      'ZIP_1': '74751',
-      'CUSTOMER NAME': 'A M Bibbs',
-      'HEIGHT': '183',
-      'WEIGHT': '185',
-      'BILLER NAME': 'JOSEPH WALKER',
-      'RECORD NO': '123456',
-      'DOB': '09/30/1959',
-      'TOTAL AMT': '$250.00',
-      'SHIPPING COST': '$20.00',
-      'CARD NAME': 'XANAX 2 MG'
-    }
-  },
-  {
-    id: 2,
-    fields: {
-      'IMAGE NAME': 'Andy Williams',
-      'EMAIL ADDRESS': 'andy2922@hotmail.com',
-      'RES_ADDRESS': '5180 Pinu',
-      'CITY_1': 'hampton bays',
-      'STATE_1': 'NY',
-      'ZIP_1': '21184',
-      'CUSTOMER NAME': 'Andy Williams',
-      'HEIGHT': '193',
-      'WEIGHT': '176',
-      'BLOOD GP': 'A+',
-      'ALCOHOLIC': 'NO',
-      'SMOKER': 'NO',
-      'DIABETIC': 'NO',
-      'CARD NAME': 'SHARON S.'
-    }
-  },
-  {
-    id: 3,
-    fields: {
-      'IMAGE NAME': 'A Margaret Lowell',
-      'EMAIL ADDRESS': 'bba53@yahoo.com',
-      'RES_ADDRESS': 'Falcon Av',
-      'CITY_1': 'Circleville',
-      'STATE_1': 'OH',
-      'ZIP_1': '75752',
-      'CUSTOMER NAME': 'A Margaret Lowell',
-      'DOB': 'Friday, March 09, 1962',
-      'HEIGHT': '158',
-      'BLOOD GP': 'O+',
-      'ALCOHOLIC': 'NO',
-      'SMOKER': 'YES',
-      'TOTAL AMT': '$220.00',
-      'SHIPPING COST': '$20.00',
-      'CARD NAME': 'XANAX 2 MG'
+export interface ExtractedField {
+  key: string;
+  value: string | null;
+}
+
+export interface ExtractedRecord {
+  id: number;
+  fields: Record<string, string | null>;
+}
+
+// Function to check if a line contains a header
+const containsHeader = (line: string): string | null => {
+  for (const header of FIELD_HEADERS) {
+    // Check if the line contains the header (case insensitive)
+    if (line.toUpperCase().includes(header)) {
+      return header;
     }
   }
-];
+  return null;
+};
 
-// Function to simulate OCR and data extraction
+// Function to extract structured data from OCR text
+const parseOCRText = (text: string): ExtractedRecord[] => {
+  const lines = text.split('\n').filter(line => line.trim() !== '');
+  const records: ExtractedRecord[] = [];
+  
+  let currentRecord: Record<string, string | null> = {};
+  let currentHeader: string | null = null;
+  
+  // Process each line of OCR text
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Check if line contains a header
+    const header = containsHeader(line);
+    
+    if (header) {
+      currentHeader = header;
+      // Extract value after header
+      const headerIndex = line.toUpperCase().indexOf(header);
+      const valueAfterHeader = line.substring(headerIndex + header.length).trim();
+      
+      if (valueAfterHeader && valueAfterHeader.length > 0) {
+        // If there's text after the header on the same line
+        currentRecord[currentHeader] = valueAfterHeader.replace(/^[:\s]+/, '');
+      } else if (i + 1 < lines.length) {
+        // If value is on the next line
+        currentRecord[currentHeader] = lines[i + 1].trim();
+        i++; // Skip the next line as we've already processed it
+      } else {
+        currentRecord[currentHeader] = null;
+      }
+    } else if (currentHeader && !currentRecord[currentHeader]) {
+      // This might be a value for the previous header if it was empty
+      currentRecord[currentHeader] = line;
+    } else if (Object.keys(currentRecord).length > 0 && line.match(/^[-]{3,}$|^[=]{3,}$/)) {
+      // If we encounter a separator line and we have data, create a new record
+      records.push({
+        id: records.length + 1,
+        fields: { ...currentRecord }
+      });
+      currentRecord = {};
+    }
+  }
+  
+  // Add the last record if there's data
+  if (Object.keys(currentRecord).length > 0) {
+    records.push({
+      id: records.length + 1,
+      fields: { ...currentRecord }
+    });
+  }
+  
+  // If no records were created but we have data, create a single record
+  if (records.length === 0 && Object.keys(currentRecord).length > 0) {
+    records.push({
+      id: 1,
+      fields: { ...currentRecord }
+    });
+  }
+  
+  return records;
+};
+
+// Function to perform OCR on an image and extract structured data
 export const extractDataFromImage = async (
   imageFile: File
 ): Promise<ExtractedRecord[]> => {
-  // In a real application, this would send the image to an OCR service
-  // For now, we'll just simulate processing time and return mock data
-  return new Promise((resolve) => {
-    // Simulate processing delay
-    setTimeout(() => {
-      resolve(MOCK_DATA);
-    }, 2000);
-  });
+  try {
+    console.log('Starting OCR processing on image:', imageFile.name);
+    
+    // Perform OCR using Tesseract.js
+    const result = await Tesseract.recognize(
+      imageFile,
+      'eng', // English language
+      {
+        logger: m => console.log('OCR progress:', m),
+      }
+    );
+    
+    console.log('OCR completed. Raw text:', result.data.text);
+    
+    // Extract structured data from OCR text
+    const records = parseOCRText(result.data.text);
+    
+    console.log('Extracted records:', records);
+    
+    return records;
+  } catch (error) {
+    console.error('Error during OCR processing:', error);
+    throw new Error('Failed to extract data from image');
+  }
 };
 
-// Function to export data to Excel (mock implementation)
+// Function to export data to Excel
 export const exportToExcel = (data: ExtractedRecord[]): void => {
-  // In a real application, this would create an Excel file
-  // For now, we'll just log the data to console
-  console.log('Exporting data to Excel:', data);
-  
   // Create CSV content
   const headers = FIELD_HEADERS;
   const csvContent = [

@@ -62,11 +62,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Settings className="h-4 w-4 text-gray-400" />
-              <h3 className="text-sm font-medium">Extraction Settings</h3>
+              <h3 className="text-sm font-medium">OCR Settings</h3>
             </div>
             
             <div className="text-sm text-gray-500">
-              <p>Advanced settings for data extraction will be available in future updates.</p>
+              <p>Using Tesseract.js for real OCR text extraction. The system will attempt to identify and extract all specified fields from your uploaded images.</p>
+              <p className="mt-2">For best results, use clear images with good lighting and contrast.</p>
             </div>
           </div>
         </TabsContent>
@@ -80,7 +81,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             
             <ol className="text-sm text-gray-500 space-y-2 list-decimal pl-5">
               <li>Upload an image containing structured data</li>
-              <li>Wait for the OCR processing to complete</li>
+              <li>Wait for the real-time OCR processing to complete</li>
               <li>Review the extracted data in the table below</li>
               <li>Export the data to Excel or other formats</li>
             </ol>
