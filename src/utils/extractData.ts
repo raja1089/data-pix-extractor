@@ -73,183 +73,253 @@ const isLikelyDate = (str: string): boolean => {
   return /\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{2,4}[-/.]\d{1,2}[-/.]\d{1,2}|(january|february|march|april|may|june|july|august|september|october|november|december)/i.test(str);
 };
 
-// Function to check if a line contains a specific field header or is a value for a known field
-const identifyField = (line: string): { header: string | null, value: string | null } => {
-  // Normalize the line for better matching
-  const normalizedLine = normalizeText(line);
-  
-  // First, check for email addresses as they are distinctive
-  if (isLikelyEmail(line)) {
-    return { header: 'EMAIL ADDRESS', value: line.trim() };
-  }
-  
-  // Check for dates which might be DOB
-  if (isLikelyDate(line) && !line.includes('@') && line.length < 30) {
-    return { header: 'DOB', value: line.trim() };
-  }
-  
-  // Check for numerical values that might be costs, heights, weights, etc.
-  const numberMatch = line.match(/\$\s*(\d+(\.\d+)?)/);
-  if (numberMatch && line.includes('$')) {
-    if (line.toLowerCase().includes('total')) {
-      return { header: 'TOTAL AMT', value: numberMatch[0].trim() };
-    } else if (line.toLowerCase().includes('cost')) {
-      return { header: 'COST', value: numberMatch[0].trim() };
+// Parse a line of OCR text to identify potential record number prefix
+const extractRecordNumber = (line: string): number | null => {
+  const match = line.match(/^\s*(\d+)\s/);
+  if (match && match[1]) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num)) {
+      return num;
     }
   }
-  
-  // Check for explicit headers in the line
-  for (const header of FIELD_HEADERS) {
-    const normalizedHeader = normalizeText(header);
-    
-    // If header is explicitly mentioned
-    if (normalizedLine.includes(normalizedHeader)) {
-      // Extract value after the header
-      const parts = normalizedLine.split(normalizedHeader);
-      if (parts.length > 1 && parts[1].trim()) {
-        return { header, value: parts[1].trim() };
-      } else {
-        return { header, value: null }; // Header found but no value on same line
-      }
-    }
-  }
-  
-  // Special case identification logic for common fields without explicit headers
-  if (/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,4}$/i.test(line.trim())) {
-    return { header: 'EMAIL ADDRESS', value: line.trim() };
-  }
-  
-  if (/^(male|female)$/i.test(line.trim())) {
-    return { header: 'SEX_1', value: line.trim() };
-  }
-  
-  if (/^(yes|no)$/i.test(line.trim()) && line.length < 5) {
-    // This could be various yes/no fields like ALCOHOLIC, DIABETIC, SMOKER
-    // But we can't determine which one specifically without context
-    return { header: null, value: line.trim() };
-  }
-  
-  // Check if this line looks like an address
-  if ((line.includes('St') || line.includes('Dr') || line.includes('Ave') || line.includes('Road') || line.includes('Lane')) 
-      && !isLikelyEmail(line) && line.length > 10) {
-    return { header: 'RES_ADDRESS', value: line.trim() };
-  }
-  
-  // Check for city, state format
-  const cityStateMatch = line.match(/([A-Za-z\s]+),?\s+([A-Z]{2})/);
-  if (cityStateMatch) {
-    return { header: 'CITY_1', value: cityStateMatch[1].trim() };
-  }
-  
-  // Default: No specific field identified
-  return { header: null, value: line.trim() };
+  return null;
 };
 
-// Function to process OCR text and identify records based on structure
+// Advanced parsing for structured data in OCR text
 const parseOCRText = (text: string): ExtractedRecord[] => {
+  console.log("Starting to parse OCR text");
+  
+  // Split by lines and remove empty lines
   const lines = text.split('\n').filter(line => line.trim() !== '');
+  console.log(`Found ${lines.length} non-empty lines`);
+  
+  if (lines.length === 0) {
+    return [];
+  }
+  
   const records: ExtractedRecord[] = [];
+  let currentRecord: Record<string, string | null> = {};
+  let currentRecordId = 0;
   
-  // Try to identify record boundaries
-  // In many documents, records are separated by consistent patterns
-  // like numbering, horizontal lines, or blank lines
-  
-  // First pass: Look for numbered entries like "1.", "2.", etc.
-  const numberPrefixRegex = /^\s*(\d+)[\.\s]/;
-  const possibleRecordStarts: number[] = [];
-  
+  // First pass: identify record boundaries by looking for numeric prefixes
+  // This handles formats like "1 Name Email..." at the start of records
   for (let i = 0; i < lines.length; i++) {
-    if (numberPrefixRegex.test(lines[i])) {
-      possibleRecordStarts.push(i);
+    const line = lines[i];
+    const recordNumber = extractRecordNumber(line);
+    
+    // If we found a new record number and it's different from the current one
+    if (recordNumber !== null && recordNumber !== currentRecordId) {
+      // Save previous record if it exists
+      if (currentRecordId > 0 && Object.keys(currentRecord).length > 0) {
+        records.push({
+          id: currentRecordId,
+          fields: { ...currentRecord }
+        });
+        
+        // Reset for new record
+        currentRecord = {};
+      }
+      
+      currentRecordId = recordNumber;
+      console.log(`Found record ${currentRecordId}`);
+      
+      // Extract email from this line as it often appears on the same line as the record number
+      const emailMatch = line.match(/\S+@\S+\.\S+/);
+      if (emailMatch) {
+        currentRecord['EMAIL ADDRESS'] = emailMatch[0];
+        console.log(`Found email: ${emailMatch[0]}`);
+      }
+      
+      // Look for gender/sex information
+      if (line.includes('MALE') || line.includes('male')) {
+        currentRecord['SEX_1'] = line.includes('FE') || line.includes('fe') ? 'FEMALE' : 'MALE';
+        console.log(`Found gender: ${currentRecord['SEX_1']}`);
+      }
+      
+      // Extract address components
+      const cityStateMatch = line.match(/([A-Za-z\s]+)[,\s]+([A-Z]{2})\s+(\d{5})/);
+      if (cityStateMatch) {
+        currentRecord['CITY_1'] = cityStateMatch[1].trim();
+        currentRecord['STATE_1'] = cityStateMatch[2];
+        currentRecord['ZIP_1'] = cityStateMatch[3];
+        console.log(`Found city/state/zip: ${cityStateMatch[1]} ${cityStateMatch[2]} ${cityStateMatch[3]}`);
+      }
+      
+      // Try to find country
+      if (line.includes('US') && line.length < 10) {
+        currentRecord['COUNTRY_1'] = 'US';
+      }
+    } 
+    else {
+      // Not a new record, but we're inside an existing one
+      if (currentRecordId > 0) {
+        // Check for email if not already found
+        if (!currentRecord['EMAIL ADDRESS'] && isLikelyEmail(line)) {
+          currentRecord['EMAIL ADDRESS'] = line.match(/\S+@\S+\.\S+/)?.[0] || null;
+        }
+        
+        // Check for gender/sex
+        if (!currentRecord['SEX_1'] && (line.includes('MALE') || line.includes('male'))) {
+          currentRecord['SEX_1'] = line.includes('FE') || line.includes('fe') ? 'FEMALE' : 'MALE';
+        }
+        
+        // Check for dates - could be DOB
+        if (isLikelyDate(line) && !line.includes('@')) {
+          if (!currentRecord['DOB']) {
+            currentRecord['DOB'] = line.trim();
+          }
+        }
+        
+        // Check for height and weight which often appear together
+        const heightWeightMatch = line.match(/(\d{2,3})\s+(\d{2,3})/);
+        if (heightWeightMatch && !currentRecord['HEIGHT'] && !currentRecord['WEIGHT']) {
+          currentRecord['HEIGHT'] = heightWeightMatch[1];
+          currentRecord['WEIGHT'] = heightWeightMatch[2];
+        }
+        
+        // Check for blood group
+        const bloodTypeMatch = line.match(/([ABO][\+-])/);
+        if (bloodTypeMatch && !currentRecord['BLOOD GP']) {
+          currentRecord['BLOOD GP'] = bloodTypeMatch[0];
+        }
+        
+        // Check for YES/NO fields like ALCOHOLIC, DIABETIC, SMOKER
+        if (/^(YES|NO)$/i.test(line.trim())) {
+          const yesNoValue = line.trim().toUpperCase();
+          // Since we don't know which field this belongs to, 
+          // we'll check if we already have values for these fields
+          if (!currentRecord['ALCOHOLIC']) {
+            currentRecord['ALCOHOLIC'] = yesNoValue;
+          } else if (!currentRecord['DIABETIC']) {
+            currentRecord['DIABETIC'] = yesNoValue;
+          } else if (!currentRecord['SMOKER']) {
+            currentRecord['SMOKER'] = yesNoValue;
+          }
+        }
+        
+        // Check for dollar amounts
+        const costMatch = line.match(/\$\s*(\d+(\.\d+)?)/);
+        if (costMatch) {
+          if (line.includes('TOTAL') || line.includes('total')) {
+            currentRecord['TOTAL AMT'] = costMatch[0];
+          } else if (!currentRecord['COST']) {
+            currentRecord['COST'] = costMatch[0];
+          }
+        }
+        
+        // Check for medication names
+        const medicationKeywords = ['XANAX', 'VALIUM', 'PHENTERMINE', 'DIDREX'];
+        for (const med of medicationKeywords) {
+          if (line.includes(med) && !currentRecord['MEDICINE']) {
+            currentRecord['MEDICINE'] = line.trim();
+            
+            // Try to extract dosage which often follows medication name
+            const dosageMatch = line.match(/\d+\s*MG/i);
+            if (dosageMatch && !currentRecord['DOSAGE']) {
+              currentRecord['DOSAGE'] = dosageMatch[0];
+            }
+            
+            // Try to extract tablet count which often follows dosage
+            const tabletMatch = line.match(/\d+(?=\s|$)/);
+            if (tabletMatch && !currentRecord['TABLETS']) {
+              currentRecord['TABLETS'] = tabletMatch[0];
+            }
+          }
+        }
+        
+        // Check for payment methods
+        const paymentMethods = ['Visa', 'Master Card', 'Discover', 'American Express', 'Bank'];
+        for (const method of paymentMethods) {
+          if (line.includes(method) && !currentRecord['CARD NAME']) {
+            currentRecord['CARD NAME'] = method;
+          }
+        }
+      }
     }
   }
   
-  // If we found numbered entries, use them to split the records
-  if (possibleRecordStarts.length > 1) {
-    for (let i = 0; i < possibleRecordStarts.length; i++) {
-      const start = possibleRecordStarts[i];
-      const end = i < possibleRecordStarts.length - 1 ? possibleRecordStarts[i + 1] : lines.length;
-      
-      const recordLines = lines.slice(start, end);
-      const recordFields: Record<string, string | null> = {};
-      
-      // Process each line in this record
-      for (let j = 0; j < recordLines.length; j++) {
-        const { header, value } = identifyField(recordLines[j]);
-        
-        if (header) {
-          recordFields[header] = value;
-        } else if (j > 0) {
-          // This might be a continuation of the previous field
-          // We don't handle this case fully, but could extend the logic
-        }
-      }
-      
-      // Only add record if we found any fields
-      if (Object.keys(recordFields).length > 0) {
-        records.push({
-          id: records.length + 1,
-          fields: recordFields
-        });
-      }
-    }
-  } else {
-    // No clear record boundaries found, try to extract data anyway
-    // Here we'll look for patterns that might indicate fields
+  // Add the last record if it exists
+  if (currentRecordId > 0 && Object.keys(currentRecord).length > 0) {
+    records.push({
+      id: currentRecordId,
+      fields: { ...currentRecord }
+    });
+  }
+  
+  // If no records with numbers were found, try an alternative approach
+  if (records.length === 0) {
+    console.log("No numbered records found, trying alternative parsing");
     
-    let currentRecord: Record<string, string | null> = {};
-    let recordStarted = false;
-    
+    // Look for lines with email addresses as potential record separators
+    let recordStartLines: number[] = [];
     for (let i = 0; i < lines.length; i++) {
-      const { header, value } = identifyField(lines[i]);
-      
-      // If we found a likely email address, it often indicates the start of a record
-      if (header === 'EMAIL ADDRESS' && value) {
-        if (recordStarted && Object.keys(currentRecord).length > 0) {
-          // Save the previous record
-          records.push({
-            id: records.length + 1,
-            fields: { ...currentRecord }
-          });
-          currentRecord = {};
-        }
-        recordStarted = true;
-        currentRecord[header] = value;
-      } else if (header && recordStarted) {
-        currentRecord[header] = value;
+      if (isLikelyEmail(lines[i])) {
+        recordStartLines.push(i);
       }
     }
     
-    // Add the last record if there is one
-    if (recordStarted && Object.keys(currentRecord).length > 0) {
+    // If we found potential record starts
+    if (recordStartLines.length > 0) {
+      for (let i = 0; i < recordStartLines.length; i++) {
+        const startIdx = recordStartLines[i];
+        const endIdx = i < recordStartLines.length - 1 ? recordStartLines[i + 1] : lines.length;
+        
+        const recordLines = lines.slice(startIdx, endIdx);
+        const recordFields: Record<string, string | null> = {};
+        
+        // Process each line in this potential record
+        for (const line of recordLines) {
+          if (isLikelyEmail(line)) {
+            recordFields['EMAIL ADDRESS'] = line.match(/\S+@\S+\.\S+/)?.[0] || null;
+          } else if (line.includes('MALE') || line.includes('male')) {
+            recordFields['SEX_1'] = line.includes('FE') || line.includes('fe') ? 'FEMALE' : 'MALE';
+          } else if (isLikelyDate(line) && !line.includes('@')) {
+            recordFields['DOB'] = line.trim();
+          }
+          
+          // More field extractions similar to the above
+          // ... additional parsing logic as needed
+        }
+        
+        // Only add if we found meaningful data
+        if (Object.keys(recordFields).length > 0) {
+          records.push({
+            id: i + 1,
+            fields: recordFields
+          });
+        }
+      }
+    }
+  }
+  
+  // If still no records, create one record with whatever we can find
+  if (records.length === 0 && lines.length > 0) {
+    console.log("Creating a single record from all available data");
+    
+    const singleRecord: Record<string, string | null> = {};
+    
+    for (const line of lines) {
+      // Apply all our extraction logic to each line
+      if (isLikelyEmail(line)) {
+        singleRecord['EMAIL ADDRESS'] = line.match(/\S+@\S+\.\S+/)?.[0] || null;
+      }
+      
+      if (line.includes('MALE') || line.includes('male')) {
+        singleRecord['SEX_1'] = line.includes('FE') || line.includes('fe') ? 'FEMALE' : 'MALE';
+      }
+      
+      // and so on for other fields...
+    }
+    
+    if (Object.keys(singleRecord).length > 0) {
       records.push({
-        id: records.length + 1,
-        fields: { ...currentRecord }
+        id: 1,
+        fields: singleRecord
       });
     }
-    
-    // If no records were found using the above logic, try a simpler approach
-    if (records.length === 0) {
-      // Just gather all identifiable fields
-      const allFields: Record<string, string | null> = {};
-      
-      for (const line of lines) {
-        const { header, value } = identifyField(line);
-        if (header) {
-          allFields[header] = value;
-        }
-      }
-      
-      // If we found any fields, create a single record
-      if (Object.keys(allFields).length > 0) {
-        records.push({
-          id: 1,
-          fields: allFields
-        });
-      }
-    }
   }
   
+  console.log(`Extracted ${records.length} records with data`);
   return records;
 };
 

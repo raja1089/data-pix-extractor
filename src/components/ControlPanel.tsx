@@ -72,7 +72,8 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                 <li>Use high-resolution images with good lighting</li>
                 <li>Ensure text is clearly visible and not skewed</li>
                 <li>Images should have good contrast between text and background</li>
-                <li>Structured data formats work best (forms, tables, lists)</li>
+                <li>Tables, forms, and well-structured data work best</li>
+                <li>Try cropping the image to focus on the data area if extraction fails</li>
               </ul>
             </div>
           </div>
@@ -87,11 +88,19 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             
             <ol className="text-sm text-gray-500 space-y-2 list-decimal pl-5">
               <li>Upload an image containing structured data</li>
-              <li>Wait for the real-time OCR processing to complete</li>
-              <li>Review the extracted data in the table below</li>
-              <li>Export the data to Excel or other formats</li>
-              <li>For different image formats, the system will attempt to identify and categorize data based on common patterns</li>
-              <li>If data isn't extracted correctly, try adjusting the image quality or uploading a clearer image</li>
+              <li>Wait for the OCR processing to complete (this may take a few moments)</li>
+              <li>The system will attempt to identify records and fields automatically</li>
+              <li>Common data structures include:
+                <ul className="list-disc pl-5 mt-1 space-y-1">
+                  <li>Numbered entries (like "1. John Smith...")</li>
+                  <li>Form data with clear field labels</li>
+                  <li>Tabular data with rows and columns</li>
+                </ul>
+              </li>
+              <li>Review the extracted data in the table</li>
+              <li>If no data is extracted, try with a clearer image or different format</li>
+              <li>Click "Export to Excel" to download the data as a CSV file</li>
+              <li>Use "Reset" to clear the current data and start again</li>
             </ol>
           </div>
         </TabsContent>
