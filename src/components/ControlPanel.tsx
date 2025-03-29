@@ -66,8 +66,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
             
             <div className="text-sm text-gray-500">
-              <p>Using Tesseract.js for real OCR text extraction. The system will attempt to identify and extract all specified fields from your uploaded images.</p>
-              <p className="mt-2">For best results, use clear images with good lighting and contrast.</p>
+              <p>Using Tesseract.js for real OCR text extraction. The system automatically identifies various data formats and structures from different image types.</p>
+              <p className="mt-2">For best results:</p>
+              <ul className="list-disc pl-5 mt-1 space-y-1">
+                <li>Use high-resolution images with good lighting</li>
+                <li>Ensure text is clearly visible and not skewed</li>
+                <li>Images should have good contrast between text and background</li>
+                <li>Structured data formats work best (forms, tables, lists)</li>
+              </ul>
             </div>
           </div>
         </TabsContent>
@@ -84,6 +90,8 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               <li>Wait for the real-time OCR processing to complete</li>
               <li>Review the extracted data in the table below</li>
               <li>Export the data to Excel or other formats</li>
+              <li>For different image formats, the system will attempt to identify and categorize data based on common patterns</li>
+              <li>If data isn't extracted correctly, try adjusting the image quality or uploading a clearer image</li>
             </ol>
           </div>
         </TabsContent>

@@ -58,75 +58,196 @@ export interface ExtractedRecord {
   fields: Record<string, string | null>;
 }
 
-// Function to check if a line contains a header
-const containsHeader = (line: string): string | null => {
-  for (const header of FIELD_HEADERS) {
-    // Check if the line contains the header (case insensitive)
-    if (line.toUpperCase().includes(header)) {
-      return header;
-    }
-  }
-  return null;
+// Function to normalize text for better matching
+const normalizeText = (text: string): string => {
+  return text.trim().toUpperCase().replace(/\s+/g, ' ');
 };
 
-// Function to extract structured data from OCR text
+// Function to check if a string might contain an email
+const isLikelyEmail = (str: string): boolean => {
+  return /\S+@\S+\.\S+/.test(str);
+};
+
+// Function to check if a string might contain a date
+const isLikelyDate = (str: string): boolean => {
+  return /\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{2,4}[-/.]\d{1,2}[-/.]\d{1,2}|(january|february|march|april|may|june|july|august|september|october|november|december)/i.test(str);
+};
+
+// Function to check if a line contains a specific field header or is a value for a known field
+const identifyField = (line: string): { header: string | null, value: string | null } => {
+  // Normalize the line for better matching
+  const normalizedLine = normalizeText(line);
+  
+  // First, check for email addresses as they are distinctive
+  if (isLikelyEmail(line)) {
+    return { header: 'EMAIL ADDRESS', value: line.trim() };
+  }
+  
+  // Check for dates which might be DOB
+  if (isLikelyDate(line) && !line.includes('@') && line.length < 30) {
+    return { header: 'DOB', value: line.trim() };
+  }
+  
+  // Check for numerical values that might be costs, heights, weights, etc.
+  const numberMatch = line.match(/\$\s*(\d+(\.\d+)?)/);
+  if (numberMatch && line.includes('$')) {
+    if (line.toLowerCase().includes('total')) {
+      return { header: 'TOTAL AMT', value: numberMatch[0].trim() };
+    } else if (line.toLowerCase().includes('cost')) {
+      return { header: 'COST', value: numberMatch[0].trim() };
+    }
+  }
+  
+  // Check for explicit headers in the line
+  for (const header of FIELD_HEADERS) {
+    const normalizedHeader = normalizeText(header);
+    
+    // If header is explicitly mentioned
+    if (normalizedLine.includes(normalizedHeader)) {
+      // Extract value after the header
+      const parts = normalizedLine.split(normalizedHeader);
+      if (parts.length > 1 && parts[1].trim()) {
+        return { header, value: parts[1].trim() };
+      } else {
+        return { header, value: null }; // Header found but no value on same line
+      }
+    }
+  }
+  
+  // Special case identification logic for common fields without explicit headers
+  if (/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,4}$/i.test(line.trim())) {
+    return { header: 'EMAIL ADDRESS', value: line.trim() };
+  }
+  
+  if (/^(male|female)$/i.test(line.trim())) {
+    return { header: 'SEX_1', value: line.trim() };
+  }
+  
+  if (/^(yes|no)$/i.test(line.trim()) && line.length < 5) {
+    // This could be various yes/no fields like ALCOHOLIC, DIABETIC, SMOKER
+    // But we can't determine which one specifically without context
+    return { header: null, value: line.trim() };
+  }
+  
+  // Check if this line looks like an address
+  if ((line.includes('St') || line.includes('Dr') || line.includes('Ave') || line.includes('Road') || line.includes('Lane')) 
+      && !isLikelyEmail(line) && line.length > 10) {
+    return { header: 'RES_ADDRESS', value: line.trim() };
+  }
+  
+  // Check for city, state format
+  const cityStateMatch = line.match(/([A-Za-z\s]+),?\s+([A-Z]{2})/);
+  if (cityStateMatch) {
+    return { header: 'CITY_1', value: cityStateMatch[1].trim() };
+  }
+  
+  // Default: No specific field identified
+  return { header: null, value: line.trim() };
+};
+
+// Function to process OCR text and identify records based on structure
 const parseOCRText = (text: string): ExtractedRecord[] => {
   const lines = text.split('\n').filter(line => line.trim() !== '');
   const records: ExtractedRecord[] = [];
   
-  let currentRecord: Record<string, string | null> = {};
-  let currentHeader: string | null = null;
+  // Try to identify record boundaries
+  // In many documents, records are separated by consistent patterns
+  // like numbering, horizontal lines, or blank lines
   
-  // Process each line of OCR text
+  // First pass: Look for numbered entries like "1.", "2.", etc.
+  const numberPrefixRegex = /^\s*(\d+)[\.\s]/;
+  const possibleRecordStarts: number[] = [];
+  
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    // Check if line contains a header
-    const header = containsHeader(line);
-    
-    if (header) {
-      currentHeader = header;
-      // Extract value after header
-      const headerIndex = line.toUpperCase().indexOf(header);
-      const valueAfterHeader = line.substring(headerIndex + header.length).trim();
+    if (numberPrefixRegex.test(lines[i])) {
+      possibleRecordStarts.push(i);
+    }
+  }
+  
+  // If we found numbered entries, use them to split the records
+  if (possibleRecordStarts.length > 1) {
+    for (let i = 0; i < possibleRecordStarts.length; i++) {
+      const start = possibleRecordStarts[i];
+      const end = i < possibleRecordStarts.length - 1 ? possibleRecordStarts[i + 1] : lines.length;
       
-      if (valueAfterHeader && valueAfterHeader.length > 0) {
-        // If there's text after the header on the same line
-        currentRecord[currentHeader] = valueAfterHeader.replace(/^[:\s]+/, '');
-      } else if (i + 1 < lines.length) {
-        // If value is on the next line
-        currentRecord[currentHeader] = lines[i + 1].trim();
-        i++; // Skip the next line as we've already processed it
-      } else {
-        currentRecord[currentHeader] = null;
+      const recordLines = lines.slice(start, end);
+      const recordFields: Record<string, string | null> = {};
+      
+      // Process each line in this record
+      for (let j = 0; j < recordLines.length; j++) {
+        const { header, value } = identifyField(recordLines[j]);
+        
+        if (header) {
+          recordFields[header] = value;
+        } else if (j > 0) {
+          // This might be a continuation of the previous field
+          // We don't handle this case fully, but could extend the logic
+        }
       }
-    } else if (currentHeader && !currentRecord[currentHeader]) {
-      // This might be a value for the previous header if it was empty
-      currentRecord[currentHeader] = line;
-    } else if (Object.keys(currentRecord).length > 0 && line.match(/^[-]{3,}$|^[=]{3,}$/)) {
-      // If we encounter a separator line and we have data, create a new record
+      
+      // Only add record if we found any fields
+      if (Object.keys(recordFields).length > 0) {
+        records.push({
+          id: records.length + 1,
+          fields: recordFields
+        });
+      }
+    }
+  } else {
+    // No clear record boundaries found, try to extract data anyway
+    // Here we'll look for patterns that might indicate fields
+    
+    let currentRecord: Record<string, string | null> = {};
+    let recordStarted = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const { header, value } = identifyField(lines[i]);
+      
+      // If we found a likely email address, it often indicates the start of a record
+      if (header === 'EMAIL ADDRESS' && value) {
+        if (recordStarted && Object.keys(currentRecord).length > 0) {
+          // Save the previous record
+          records.push({
+            id: records.length + 1,
+            fields: { ...currentRecord }
+          });
+          currentRecord = {};
+        }
+        recordStarted = true;
+        currentRecord[header] = value;
+      } else if (header && recordStarted) {
+        currentRecord[header] = value;
+      }
+    }
+    
+    // Add the last record if there is one
+    if (recordStarted && Object.keys(currentRecord).length > 0) {
       records.push({
         id: records.length + 1,
         fields: { ...currentRecord }
       });
-      currentRecord = {};
     }
-  }
-  
-  // Add the last record if there's data
-  if (Object.keys(currentRecord).length > 0) {
-    records.push({
-      id: records.length + 1,
-      fields: { ...currentRecord }
-    });
-  }
-  
-  // If no records were created but we have data, create a single record
-  if (records.length === 0 && Object.keys(currentRecord).length > 0) {
-    records.push({
-      id: 1,
-      fields: { ...currentRecord }
-    });
+    
+    // If no records were found using the above logic, try a simpler approach
+    if (records.length === 0) {
+      // Just gather all identifiable fields
+      const allFields: Record<string, string | null> = {};
+      
+      for (const line of lines) {
+        const { header, value } = identifyField(line);
+        if (header) {
+          allFields[header] = value;
+        }
+      }
+      
+      // If we found any fields, create a single record
+      if (Object.keys(allFields).length > 0) {
+        records.push({
+          id: 1,
+          fields: allFields
+        });
+      }
+    }
   }
   
   return records;
